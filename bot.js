@@ -1,18 +1,47 @@
 const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
+const fs = require('fs');
 
-const token = process.env.BOT_TOKEN;;
+const token = process.env.BOT_TOKEN;
 
 const bot = new TelegramBot(token, {
     polling: true
 });
 
-// Пользователи
-const users = new Set();
+const DATA_FILE = './data.json';
 
-// Балансы
-const userSums = {};
+// --------------------
+// загрузка данных
+// --------------------
+let userSums = {};
+let users = new Set();
 
+if (fs.existsSync(DATA_FILE)) {
+    try {
+        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+
+        userSums = data.userSums || {};
+        users = new Set(data.users || []);
+
+    } catch (e) {
+        userSums = {};
+        users = new Set();
+    }
+}
+
+// --------------------
+// сохранение данных
+// --------------------
+function saveData() {
+    fs.writeFileSync(DATA_FILE, JSON.stringify({
+        userSums,
+        users: Array.from(users)
+    }, null, 2));
+}
+
+// --------------------
+// /start
+// --------------------
 bot.onText(/\/start/, (msg) => {
 
     const chatId = msg.chat.id;
@@ -23,12 +52,14 @@ bot.onText(/\/start/, (msg) => {
         userSums[chatId] = 0;
     }
 
-    bot.sendMessage(
-        chatId,
-        'Введите стартовую сумму.'
-    );
+    saveData();
+
+    bot.sendMessage(chatId, 'Введите стартовую сумму.');
 });
 
+// --------------------
+// ввод суммы
+// --------------------
 bot.on('message', (msg) => {
 
     if (!msg.text) return;
@@ -39,6 +70,7 @@ bot.on('message', (msg) => {
     if (!isNaN(msg.text)) {
 
         userSums[chatId] = Number(msg.text);
+        saveData();
 
         bot.sendMessage(
             chatId,
@@ -47,7 +79,9 @@ bot.on('message', (msg) => {
     }
 });
 
-// Понедельник, среда, пятница, суббота в 10:30
+// --------------------
+// cron (Пн, Ср, Пт, Сб 10:30)
+// --------------------
 cron.schedule('30 10 * * 1,3,5,6', () => {
 
     users.forEach(chatId => {
@@ -59,14 +93,8 @@ cron.schedule('30 10 * * 1,3,5,6', () => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            {
-                                text: 'Да',
-                                callback_data: 'gym_yes'
-                            },
-                            {
-                                text: 'Нет',
-                                callback_data: 'gym_no'
-                            }
+                            { text: 'Да', callback_data: 'gym_yes' },
+                            { text: 'Нет', callback_data: 'gym_no' }
                         ]
                     ]
                 }
@@ -79,6 +107,9 @@ cron.schedule('30 10 * * 1,3,5,6', () => {
     timezone: 'Europe/Minsk'
 });
 
+// --------------------
+// callback buttons
+// --------------------
 bot.on('callback_query', async (query) => {
 
     const chatId = query.message.chat.id;
@@ -93,18 +124,8 @@ bot.on('callback_query', async (query) => {
                 {
                     reply_markup: {
                         inline_keyboard: [
-                            [
-                                {
-                                    text: '-20 рублей',
-                                    callback_data: 'minus20'
-                                }
-                            ],
-                            [
-                                {
-                                    text: '-40 рублей',
-                                    callback_data: 'minus40'
-                                }
-                            ]
+                            [{ text: '-20 BYN', callback_data: 'minus20' }],
+                            [{ text: '-40 BYN', callback_data: 'minus40' }]
                         ]
                     }
                 }
@@ -123,27 +144,28 @@ bot.on('callback_query', async (query) => {
 
         case 'minus20':
 
-    userSums[chatId] -= 20;
+            userSums[chatId] -= 20;
+            saveData();
 
-    await bot.sendMessage(
-        chatId,
-        `Списано: 20\nОстаток: $${userSums[chatId]} BYN`
-    );
+            await bot.sendMessage(
+                chatId,
+                `Списано: 20 BYN\nОстаток: ${userSums[chatId]} BYN`
+            );
 
-    break;
+            break;
 
-case 'minus40':
+        case 'minus40':
 
-    userSums[chatId] -= 40;
+            userSums[chatId] -= 40;
+            saveData();
 
-    await bot.sendMessage(
-        chatId,
-        `Списано: $40\nОстаток: ${userSums[chatId]} BYN`
-    );
+            await bot.sendMessage(
+                chatId,
+                `Списано: 40 BYN\nОстаток: ${userSums[chatId]} BYN`
+            );
 
-    break;
+            break;
     }
 
     bot.answerCallbackQuery(query.id);
-
 });
