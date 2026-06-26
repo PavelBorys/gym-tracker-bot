@@ -141,15 +141,40 @@ bot.on('message', msg => {
     }
 });
 
+
 // --------------------
-// тест: каждую минуту
+// Пн, Ср, Пт, Сб - 10:30
 // --------------------
 cron.schedule('30 10 * * 1,3,5,6', () => {
 
+    console.log('Morning training reminder');
+
+    sendTrainingQuestion();
+
+}, {
+    timezone: 'Europe/Minsk'
+});
+
+// --------------------
+// Вт, Ср, Чт, Пт - 17:00
+// --------------------
+cron.schedule('0 17 * * 2,3,4,5', () => {
+
+    console.log('Evening training reminder');
+
+    sendTrainingQuestion();
+
+}, {
+    timezone: 'Europe/Minsk'
+});
+
+// --------------------
+// Общая функция отправки
+// --------------------
+function sendTrainingQuestion() {
+
     console.log(
-        'CRON RUN',
-        new Date(),
-        'users:',
+        'Sending reminders. Users:',
         users.size
     );
 
@@ -177,8 +202,7 @@ cron.schedule('30 10 * * 1,3,5,6', () => {
         );
 
     });
-
-});
+}
 
 // Для боевого режима потом верни:
 // cron.schedule('30 10 * * 1,3,5,6', ..., {
