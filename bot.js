@@ -1,320 +1,178 @@
-const TelegramBot = require('node-telegram-bot-api');
-const cron = require('node-cron');
-const fs = require('fs');
+Заменить в коде:
 
-const token = process.env.BOT_TOKEN;
-
-if (!token) {
-    console.error('BOT_TOKEN not found');
-    process.exit(1);
-}
-
-const bot = new TelegramBot(token, {
-    polling: true
-});
-
-const DATA_FILE = './data.json';
+1. После строки:
 
 let userSums = {};
 let users = new Set();
 
-// --------------------
-// загрузка данных
-// --------------------
-if (fs.existsSync(DATA_FILE)) {
-    try {
-        const data = JSON.parse(
-            fs.readFileSync(DATA_FILE, 'utf8')
-        );
+добавить:
 
-        userSums = data.userSums || {};
-        users = new Set(data.users || []);
+let history = {};
 
-    } catch (e) {
-        console.error('Load error:', e);
+2. В блоке загрузки данных заменить:
 
-        userSums = {};
-        users = new Set();
-    }
+userSums = data.userSums || {};
+users = new Set(data.users || []);
+
+на:
+
+userSums = data.userSums || {};
+history = data.history || {};
+users = new Set(data.users || []);
+
+3. В функции saveData заменить объект на:
+
+{
+userSums,
+history,
+users: Array.from(users)
 }
 
-// --------------------
-// сохранение данных
-// --------------------
-function saveData() {
+4. В обработчике /start заменить bot.sendMessage(...) на:
 
-    fs.writeFileSync(
-        DATA_FILE,
-        JSON.stringify(
-            {
-                userSums,
-                users: Array.from(users)
-            },
-            null,
-            2
-        )
-    );
+bot.sendMessage(
+chatId,
+'Введите стартовую сумму.',
+{
+reply_markup: {
+keyboard: [
+['💰 Баланс'],
+['📅 История']
+],
+resize_keyboard: true
 }
+}
+);
 
-// --------------------
-// логи
-// --------------------
-console.log('Bot started');
-console.log('Users loaded:', users.size);
+5. После обработчика /balance добавить:
 
-bot.getMe()
-    .then(me => {
-        console.log('Bot connected:', me.username);
-    })
-    .catch(console.error);
+bot.onText(//history/, msg => {
 
-bot.on('polling_error', error => {
-    console.error('[polling_error]', error.message);
-});
+```
+const chatId = msg.chat.id;
+const userKey = String(chatId);
 
-bot.on('error', error => {
-    console.error('[error]', error);
-});
+const records = history[userKey] || [];
 
-// --------------------
-// /start
-// --------------------
-bot.onText(/\/start/, msg => {
-
-    const chatId = msg.chat.id;
-    const userKey = String(chatId);
-
-    users.add(chatId);
-
-    if (userSums[userKey] === undefined) {
-        userSums[userKey] = 0;
-    }
-
-    saveData();
+if (records.length === 0) {
 
     bot.sendMessage(
         chatId,
-        'Введите стартовую сумму.'
-    );
-});
-
-// --------------------
-// /balance
-// --------------------
-bot.onText(/\/balance/, msg => {
-
-    const chatId = msg.chat.id;
-    const userKey = String(chatId);
-
-    const balance =
-        userSums[userKey] ?? 0;
-
-    bot.sendMessage(
-        chatId,
-        `Текущий баланс: ${balance} BYN`
-    );
-});
-
-// --------------------
-// ввод суммы
-// --------------------
-bot.on('message', msg => {
-
-    if (!msg.text) return;
-    if (msg.text.startsWith('/')) return;
-
-    const chatId = msg.chat.id;
-    const userKey = String(chatId);
-
-    const amount = Number(msg.text);
-
-    if (!Number.isNaN(amount)) {
-
-        userSums[userKey] = amount;
-
-        saveData();
-
-        bot.sendMessage(
-            chatId,
-            `Текущая сумма: ${amount} BYN`
-        );
-    }
-});
-
-
-// --------------------
-// Пн, Ср, Пт, Сб - 10:30
-// --------------------
-cron.schedule('30 10 * * 1,3,5,6', () => {
-
-    console.log('Morning training reminder');
-
-    sendTrainingQuestion();
-
-}, {
-    timezone: 'Europe/Minsk'
-});
-
-// --------------------
-// Вт, Ср, Чт, Пт - 17:00
-// --------------------
-cron.schedule('0 17 * * 2,3,4,5', () => {
-
-    console.log('Evening training reminder');
-
-    sendTrainingQuestion();
-
-}, {
-    timezone: 'Europe/Minsk'
-});
-
-// --------------------
-// Общая функция отправки
-// --------------------
-function sendTrainingQuestion() {
-
-    console.log(
-        'Sending reminders. Users:',
-        users.size
+        'История тренировок пуста.'
     );
 
-    users.forEach(chatId => {
-
-        bot.sendMessage(
-            chatId,
-            'Были на тренировке?',
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: 'Да',
-                                callback_data: 'gym_yes'
-                            },
-                            {
-                                text: 'Нет',
-                                callback_data: 'gym_no'
-                            }
-                        ]
-                    ]
-                }
-            }
-        );
-
-    });
+    return;
 }
 
-// Для боевого режима потом верни:
-// cron.schedule('30 10 * * 1,3,5,6', ..., {
-//     timezone: 'Europe/Minsk'
-// });
+let total = 0;
 
-// --------------------
-// кнопки
-// --------------------
-bot.on('callback_query', async query => {
+let text =
+    '📅 История тренировок\n\n';
 
-    const chatId = query.message.chat.id;
-    const userKey = String(chatId);
+records.forEach(item => {
 
-    try {
+    total += item.amount;
 
-        switch (query.data) {
+    const date = new Date(item.date)
+        .toLocaleDateString('ru-RU');
 
-            case 'gym_yes':
+    text += `${date} — ${item.amount} BYN\n`;
+});
 
-                await bot.sendMessage(
-                    chatId,
-                    'Выберите стоимость тренировки',
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [
-                                    {
-                                        text: '-20 BYN',
-                                        callback_data: 'minus20'
-                                    }
-                                ],
-                                [
-                                    {
-                                        text: '-40 BYN',
-                                        callback_data: 'minus40'
-                                    }
-                                ]
-                            ]
-                        }
-                    }
-                );
+text +=
+    `\n🏋️ Тренировок: ${records.length}` +
+    `\n💸 Всего списано: ${total} BYN` +
+    `\n💰 Остаток: ${userSums[userKey] ?? 0} BYN`;
 
-                break;
+bot.sendMessage(chatId, text);
+```
 
-            case 'gym_no':
+});
 
-                await bot.sendMessage(
-                    chatId,
-                    'Хорошо, до следующей тренировки.'
-                );
+6. В обработчике сообщений перед закрывающей скобкой блока if (!Number.isNaN(amount)) добавить:
 
-                break;
+history[userKey] = [];
 
-            case 'minus20':
+7. В обработчике сообщений после блока с вводом суммы добавить:
 
-                if (typeof userSums[userKey] !== 'number') {
+if (msg.text === '💰 Баланс') {
 
-                    await bot.sendMessage(
-                        chatId,
-                        'Сначала введите стартовую сумму.'
-                    );
+```
+const balance =
+    userSums[userKey] ?? 0;
 
-                    break;
-                }
+return bot.sendMessage(
+    chatId,
+    `Текущий баланс: ${balance} BYN`
+);
+```
 
-                userSums[userKey] -= 20;
+}
 
-                saveData();
+if (msg.text === '📅 История') {
 
-                await bot.sendMessage(
-                    chatId,
-                    `Списано: 20 BYN\nОстаток: ${userSums[userKey]} BYN`
-                );
+```
+const records = history[userKey] || [];
 
-                break;
+if (records.length === 0) {
 
-            case 'minus40':
+    return bot.sendMessage(
+        chatId,
+        'История тренировок пуста.'
+    );
+}
 
-                if (typeof userSums[userKey] !== 'number') {
+let total = 0;
 
-                    await bot.sendMessage(
-                        chatId,
-                        'Сначала введите стартовую сумму.'
-                    );
+let text =
+    '📅 История тренировок\n\n';
 
-                    break;
-                }
+records.forEach(item => {
 
-                userSums[userKey] -= 40;
+    total += item.amount;
 
-                saveData();
+    const date = new Date(item.date)
+        .toLocaleDateString('ru-RU');
 
-                await bot.sendMessage(
-                    chatId,
-                    `Списано: 40 BYN\nОстаток: ${userSums[userKey]} BYN`
-                );
+    text += `${date} — ${item.amount} BYN\n`;
+});
 
-                break;
-        }
+text +=
+    `\n🏋️ Тренировок: ${records.length}` +
+    `\n💸 Всего списано: ${total} BYN` +
+    `\n💰 Остаток: ${userSums[userKey] ?? 0} BYN`;
 
-        await bot.answerCallbackQuery(query.id);
+return bot.sendMessage(chatId, text);
+```
 
-    } catch (error) {
+}
 
-        console.error(error);
+8. В обработчике minus20 после строки:
 
-        await bot.answerCallbackQuery(
-            query.id,
-            {
-                text: 'Произошла ошибка'
-            }
-        );
-    }
+userSums[userKey] -= 20;
+
+добавить:
+
+if (!history[userKey]) {
+history[userKey] = [];
+}
+
+history[userKey].push({
+date: new Date().toISOString(),
+amount: 20
+});
+
+9. В обработчике minus40 после строки:
+
+userSums[userKey] -= 40;
+
+добавить:
+
+if (!history[userKey]) {
+history[userKey] = [];
+}
+
+history[userKey].push({
+date: new Date().toISOString(),
+amount: 40
 });
