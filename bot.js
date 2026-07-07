@@ -5,12 +5,12 @@ const fs = require('fs');
 const token = process.env.BOT_TOKEN;
 
 if (!token) {
-console.error('BOT_TOKEN not found');
-process.exit(1);
+    console.error('BOT_TOKEN not found');
+    process.exit(1);
 }
 
 const bot = new TelegramBot(token, {
-polling: true
+    polling: true
 });
 
 const DATA_FILE = './data.json';
@@ -23,49 +23,38 @@ let users = new Set();
 // загрузка данных
 // --------------------
 if (fs.existsSync(DATA_FILE)) {
-try {
+    try {
+        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 
-```
-    const data = JSON.parse(
-        fs.readFileSync(DATA_FILE, 'utf8')
-    );
+        userSums = data.userSums || {};
+        history = data.history || {};
+        users = new Set(data.users || []);
 
-    userSums = data.userSums || {};
-    history = data.history || {};
-    users = new Set(data.users || []);
+    } catch (e) {
+        console.error('Load error:', e);
 
-} catch (e) {
-
-    console.error('Load error:', e);
-
-    userSums = {};
-    history = {};
-    users = new Set();
-}
-```
-
+        userSums = {};
+        history = {};
+        users = new Set();
+    }
 }
 
 // --------------------
 // сохранение данных
 // --------------------
 function saveData() {
-
-```
-fs.writeFileSync(
-    DATA_FILE,
-    JSON.stringify(
-        {
-            userSums,
-            history,
-            users: Array.from(users)
-        },
-        null,
-        2
-    )
-);
-```
-
+    fs.writeFileSync(
+        DATA_FILE,
+        JSON.stringify(
+            {
+                userSums,
+                history,
+                users: Array.from(users)
+            },
+            null,
+            2
+        )
+    );
 }
 
 // --------------------
@@ -73,40 +62,34 @@ fs.writeFileSync(
 // --------------------
 function showHistory(chatId, userKey) {
 
-```
-const records = history[userKey] || [];
+    const records = history[userKey] || [];
 
-if (records.length === 0) {
+    if (records.length === 0) {
+        return bot.sendMessage(
+            chatId,
+            'История тренировок пуста.'
+        );
+    }
 
-    return bot.sendMessage(
-        chatId,
-        'История тренировок пуста.'
-    );
-}
+    let total = 0;
+    let text = '📅 История тренировок\n\n';
 
-let total = 0;
+    records.forEach(item => {
 
-let text =
-    '📅 История тренировок\n\n';
+        total += item.amount;
 
-records.forEach(item => {
+        const date = new Date(item.date)
+            .toLocaleString('ru-RU');
 
-    total += item.amount;
+        text += `${date} — ${item.amount} BYN\n`;
+    });
 
-    const date = new Date(item.date)
-        .toLocaleDateString('ru-RU');
+    text +=
+        `\n🏋️ Тренировок: ${records.length}` +
+        `\n💸 Всего списано: ${total} BYN` +
+        `\n💰 Остаток: ${userSums[userKey] ?? 0} BYN`;
 
-    text += `${date} — ${item.amount} BYN\n`;
-});
-
-text +=
-    `\n🏋️ Тренировок: ${records.length}` +
-    `\n💸 Всего списано: ${total} BYN` +
-    `\n💰 Остаток: ${userSums[userKey] ?? 0} BYN`;
-
-return bot.sendMessage(chatId, text);
-```
-
+    return bot.sendMessage(chatId, text);
 }
 
 // --------------------
@@ -116,133 +99,122 @@ console.log('Bot started');
 console.log('Users loaded:', users.size);
 
 bot.getMe()
-.then(me => {
-console.log('Bot connected:', me.username);
-})
-.catch(console.error);
+    .then(me => {
+        console.log('Bot connected:', me.username);
+    })
+    .catch(console.error);
 
 bot.on('polling_error', error => {
-console.error('[polling_error]', error.message);
+    console.error('[polling_error]', error.message);
 });
 
 bot.on('error', error => {
-console.error('[error]', error);
+    console.error('[error]', error);
 });
 
 // --------------------
 // /start
 // --------------------
-bot.onText(//start/, msg => {
+bot.onText(/\/start/, msg => {
 
-```
-const chatId = msg.chat.id;
-const userKey = String(chatId);
+    const chatId = msg.chat.id;
+    const userKey = String(chatId);
 
-users.add(chatId);
+    users.add(chatId);
 
-if (userSums[userKey] === undefined) {
-    userSums[userKey] = 0;
-}
-
-saveData();
-
-bot.sendMessage(
-    chatId,
-    'Введите стартовую сумму.',
-    {
-        reply_markup: {
-            keyboard: [
-                ['💰 Баланс'],
-                ['📅 История']
-            ],
-            resize_keyboard: true
-        }
+    if (userSums[userKey] === undefined) {
+        userSums[userKey] = 0;
     }
-);
-```
 
+    if (!history[userKey]) {
+        history[userKey] = [];
+    }
+
+    saveData();
+
+    bot.sendMessage(
+        chatId,
+        'Введите стартовую сумму.',
+        {
+            reply_markup: {
+                keyboard: [
+                    ['💰 Баланс'],
+                    ['📅 История']
+                ],
+                resize_keyboard: true
+            }
+        }
+    );
 });
 
 // --------------------
 // /balance
 // --------------------
-bot.onText(//balance/, msg => {
+bot.onText(/\/balance/, msg => {
 
-```
-const chatId = msg.chat.id;
-const userKey = String(chatId);
+    const chatId = msg.chat.id;
+    const userKey = String(chatId);
 
-const balance =
-    userSums[userKey] ?? 0;
+    const balance = userSums[userKey] ?? 0;
 
-bot.sendMessage(
-    chatId,
-    `Текущий баланс: ${balance} BYN`
-);
-```
-
+    bot.sendMessage(
+        chatId,
+        `Текущий баланс: ${balance} BYN`
+    );
 });
 
 // --------------------
 // /history
 // --------------------
-bot.onText(//history/, msg => {
+bot.onText(/\/history/, msg => {
 
-```
-const chatId = msg.chat.id;
-const userKey = String(chatId);
+    const chatId = msg.chat.id;
+    const userKey = String(chatId);
 
-showHistory(chatId, userKey);
-```
-
+    showHistory(chatId, userKey);
 });
 
 // --------------------
-// ввод сообщений
+// обработка сообщений
 // --------------------
 bot.on('message', msg => {
 
-```
-if (!msg.text) return;
-if (msg.text.startsWith('/')) return;
+    if (!msg.text) return;
+    if (msg.text.startsWith('/')) return;
 
-const chatId = msg.chat.id;
-const userKey = String(chatId);
+    const chatId = msg.chat.id;
+    const userKey = String(chatId);
 
-if (msg.text === '💰 Баланс') {
+    if (msg.text === '💰 Баланс') {
 
-    const balance =
-        userSums[userKey] ?? 0;
+        const balance = userSums[userKey] ?? 0;
 
-    return bot.sendMessage(
-        chatId,
-        `Текущий баланс: ${balance} BYN`
-    );
-}
+        return bot.sendMessage(
+            chatId,
+            `Текущий баланс: ${balance} BYN`
+        );
+    }
 
-if (msg.text === '📅 История') {
+    if (msg.text === '📅 История') {
+        return showHistory(chatId, userKey);
+    }
 
-    return showHistory(chatId, userKey);
-}
+    const amount = Number(msg.text);
 
-const amount = Number(msg.text);
+    if (!Number.isNaN(amount)) {
 
-if (!Number.isNaN(amount)) {
+        userSums[userKey] = amount;
 
-    userSums[userKey] = amount;
+        // новая сумма = новая история
+        history[userKey] = [];
 
-    // новая сумма = новая история
-    history[userKey] = [];
+        saveData();
 
-    saveData();
-
-    return bot.sendMessage(
-        chatId,
-        `Текущая сумма: ${amount} BYN`
-    );
-}
-```
-
+        return bot.sendMessage(
+            chatId,
+            `Текущая сумма: ${amount} BYN`
+        );
+    }
 });
 
 // --------------------
@@ -250,14 +222,12 @@ if (!Number.isNaN(amount)) {
 // --------------------
 cron.schedule('30 10 * * 1,3,5,6', () => {
 
-```
-console.log('Morning reminder');
+    console.log('Morning reminder');
 
-sendTrainingQuestion();
-```
+    sendTrainingQuestion();
 
 }, {
-timezone: 'Europe/Minsk'
+    timezone: 'Europe/Minsk'
 });
 
 // --------------------
@@ -265,14 +235,12 @@ timezone: 'Europe/Minsk'
 // --------------------
 cron.schedule('0 17 * * 2,3,4,5', () => {
 
-```
-console.log('Evening reminder');
+    console.log('Evening reminder');
 
-sendTrainingQuestion();
-```
+    sendTrainingQuestion();
 
 }, {
-timezone: 'Europe/Minsk'
+    timezone: 'Europe/Minsk'
 });
 
 // --------------------
@@ -280,38 +248,35 @@ timezone: 'Europe/Minsk'
 // --------------------
 function sendTrainingQuestion() {
 
-```
-console.log(
-    'Sending reminders. Users:',
-    users.size
-);
-
-users.forEach(chatId => {
-
-    bot.sendMessage(
-        chatId,
-        'Были на тренировке?',
-        {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: 'Да',
-                            callback_data: 'gym_yes'
-                        },
-                        {
-                            text: 'Нет',
-                            callback_data: 'gym_no'
-                        }
-                    ]
-                ]
-            }
-        }
+    console.log(
+        'Sending reminders. Users:',
+        users.size
     );
 
-});
-```
+    users.forEach(chatId => {
 
+        bot.sendMessage(
+            chatId,
+            'Были на тренировке?',
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: 'Да',
+                                callback_data: 'gym_yes'
+                            },
+                            {
+                                text: 'Нет',
+                                callback_data: 'gym_no'
+                            }
+                        ]
+                    ]
+                }
+            }
+        );
+
+    });
 }
 
 // --------------------
@@ -319,128 +284,125 @@ users.forEach(chatId => {
 // --------------------
 bot.on('callback_query', async query => {
 
-```
-const chatId = query.message.chat.id;
-const userKey = String(chatId);
+    const chatId = query.message.chat.id;
+    const userKey = String(chatId);
 
-try {
+    try {
 
-    switch (query.data) {
+        switch (query.data) {
 
-        case 'gym_yes':
+            case 'gym_yes':
 
-            await bot.sendMessage(
-                chatId,
-                'Выберите стоимость тренировки',
-                {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: '-20 BYN',
-                                    callback_data: 'minus20'
-                                }
-                            ],
-                            [
-                                {
-                                    text: '-40 BYN',
-                                    callback_data: 'minus40'
-                                }
+                await bot.sendMessage(
+                    chatId,
+                    'Выберите стоимость тренировки',
+                    {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    {
+                                        text: '-20 BYN',
+                                        callback_data: 'minus20'
+                                    }
+                                ],
+                                [
+                                    {
+                                        text: '-40 BYN',
+                                        callback_data: 'minus40'
+                                    }
+                                ]
                             ]
-                        ]
+                        }
                     }
+                );
+
+                break;
+
+            case 'gym_no':
+
+                await bot.sendMessage(
+                    chatId,
+                    'Хорошо, до следующей тренировки.'
+                );
+
+                break;
+
+            case 'minus20':
+
+                if (typeof userSums[userKey] !== 'number') {
+
+                    await bot.sendMessage(
+                        chatId,
+                        'Сначала введите стартовую сумму.'
+                    );
+
+                    break;
                 }
-            );
 
-            break;
+                userSums[userKey] -= 20;
 
-        case 'gym_no':
+                if (!history[userKey]) {
+                    history[userKey] = [];
+                }
 
-            await bot.sendMessage(
-                chatId,
-                'Хорошо, до следующей тренировки.'
-            );
+                history[userKey].push({
+                    date: new Date().toISOString(),
+                    amount: 20
+                });
 
-            break;
-
-        case 'minus20':
-
-            if (typeof userSums[userKey] !== 'number') {
+                saveData();
 
                 await bot.sendMessage(
                     chatId,
-                    'Сначала введите стартовую сумму.'
+                    `Списано: 20 BYN\nОстаток: ${userSums[userKey]} BYN`
                 );
 
                 break;
-            }
 
-            userSums[userKey] -= 20;
+            case 'minus40':
 
-            if (!history[userKey]) {
-                history[userKey] = [];
-            }
+                if (typeof userSums[userKey] !== 'number') {
 
-            history[userKey].push({
-                date: new Date().toISOString(),
-                amount: 20
-            });
+                    await bot.sendMessage(
+                        chatId,
+                        'Сначала введите стартовую сумму.'
+                    );
 
-            saveData();
+                    break;
+                }
 
-            await bot.sendMessage(
-                chatId,
-                `Списано: 20 BYN\nОстаток: ${userSums[userKey]} BYN`
-            );
+                userSums[userKey] -= 40;
 
-            break;
+                if (!history[userKey]) {
+                    history[userKey] = [];
+                }
 
-        case 'minus40':
+                history[userKey].push({
+                    date: new Date().toISOString(),
+                    amount: 40
+                });
 
-            if (typeof userSums[userKey] !== 'number') {
+                saveData();
 
                 await bot.sendMessage(
                     chatId,
-                    'Сначала введите стартовую сумму.'
+                    `Списано: 40 BYN\nОстаток: ${userSums[userKey]} BYN`
                 );
 
                 break;
-            }
-
-            userSums[userKey] -= 40;
-
-            if (!history[userKey]) {
-                history[userKey] = [];
-            }
-
-            history[userKey].push({
-                date: new Date().toISOString(),
-                amount: 40
-            });
-
-            saveData();
-
-            await bot.sendMessage(
-                chatId,
-                `Списано: 40 BYN\nОстаток: ${userSums[userKey]} BYN`
-            );
-
-            break;
-    }
-
-    await bot.answerCallbackQuery(query.id);
-
-} catch (error) {
-
-    console.error(error);
-
-    await bot.answerCallbackQuery(
-        query.id,
-        {
-            text: 'Произошла ошибка'
         }
-    );
-}
-```
 
+        await bot.answerCallbackQuery(query.id);
+
+    } catch (error) {
+
+        console.error(error);
+
+        await bot.answerCallbackQuery(
+            query.id,
+            {
+                text: 'Произошла ошибка'
+            }
+        );
+    }
 });
